@@ -1,0 +1,91 @@
+function createTimeDrivenTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    ScriptApp.deleteTrigger(triggers[i]);
+  }
+
+  ScriptApp.newTrigger('checkForUpdates')
+    .timeBased()
+    .everyMinutes(1)
+    .create();
+}
+
+function checkForUpdates() {
+  ExcelToSheet();
+}
+
+function ExcelToSheet() {
+  try {
+    var excelFileId = '1_V9zSr_hnJzGZj7Enw6TejI7h_u5qGhk';
+    var folderId = '1x7ofwsmIARerRKLqVZjlbX7ItjnZKx9j';
+    
+    var newFileName = 'Hasil Produksi ' + getCurrentMonth() + ' ' + getCurrentYear();
+    
+    var file = DriveApp.getFileById(excelFileId);
+    var blob = file.getBlob();
+    
+    var folder = DriveApp.getFolderById(folderId);
+    
+    var existingFile;
+    var existingFiles = folder.getFilesByName(newFileName);
+    if (existingFiles.hasNext()) {
+      existingFile = existingFiles.next();
+    }
+    
+    if (existingFile) {
+      var googleSpreadsheet = SpreadsheetApp.openById(existingFile.getId());
+      
+      var tempFile = Drive.Files.copy({}, excelFileId, { convert: true });
+      var tempSpreadsheet = SpreadsheetApp.openById(tempFile.id);
+      var tempSheets = tempSpreadsheet.getSheets();
+      
+      // Hapus sheets yang ada di Google Sheets tapi tidak ada di Excel
+      var googleSheets = googleSpreadsheet.getSheets();
+      var tempSheetNames = tempSheets.map(sheet => sheet.getName());
+      for (var i = 0; i < googleSheets.length; i++) {
+        var googleSheet = googleSheets[i];
+        if (!tempSheetNames.includes(googleSheet.getName())) {
+          googleSpreadsheet.deleteSheet(googleSheet);
+        }
+      }
+      
+      // Perbarui atau tambahkan sheets dari Excel ke Google Sheets
+      for (var i = 0; i < tempSheets.length; i++) {
+        var tempSheet = tempSheets[i];
+        var newSheet = tempSheet.copyTo(googleSpreadsheet);
+        var existingSheet = googleSpreadsheet.getSheetByName(tempSheet.getName());
+        
+        if (existingSheet) {
+          googleSpreadsheet.deleteSheet(existingSheet);
+        }
+        
+        newSheet.setName(tempSheet.getName());
+      }
+      
+      DriveApp.getFileById(tempFile.id).setTrashed(true);
+      
+      var googleSheetUrl = googleSpreadsheet.getUrl();
+      Logger.log("Konten file berhasil diperbarui dengan nama: " + newFileName);
+      Logger.log("Link spreadsheet: " + googleSheetUrl);
+    } else {
+      var convertedFile = Drive.Files.copy({ title: newFileName }, excelFileId, { convert: true });
+      
+      var googleSheetUrl = "https://docs.google.com/spreadsheets/d/" + convertedFile.id + "/edit";
+      Logger.log("File baru berhasil dibuat dengan nama: " + newFileName);
+      Logger.log("Link spreadsheet: " + googleSheetUrl);
+    }
+    
+  } catch (e) {
+    Logger.log("Error: " + e.toString());
+  }
+}
+
+function getCurrentMonth() {
+  var date = new Date();
+  return date.toLocaleString('default', { month: 'long' });
+}
+
+function getCurrentYear() {
+  var date = new Date();
+  return date.getFullYear();
+}
